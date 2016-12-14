@@ -5,12 +5,32 @@
 <script src="browserTest.js"></script>
 </head>
 <body>
-	Sanity Testing (check the console) : This example is here to make sure that
+    <p>
+    Sanity Testing (check the console) : This example is here to make sure that
     the SDK works inside a browser. It simply does a GET /publicRooms on
-    matrix.org
+    matrix.org, and demonstrates logging in to a home server
     <br/>
     You should see a message confirming that the SDK works below:
-    <br/>
-    <div id="result"></div>
+    </p>
+    <div style="height: 100px;" id="result">
+        Loading...
+    </div>
+
+    To log in, enter credentials below:
+    <form onsubmit="return login(this)">
+      <table>
+        <tr>
+          <td><label for="username">User name:</label></td>
+          <td><input type="text" id="username"></input></td>
+        </tr><tr>
+          <td><label for="password">Password:</label></td>
+          <td><input type="password" id="password"></input></td>
+        </tr><tr>
+          <td><label for="server">Homeserver:</label></td>
+          <td><input type="text" id="server" value="https://matrix.org"></input></td>
+        </tr>
+      </table>
+      <input type="submit" value="Log in"></input>
+    </form>
 </body>
 </html>
