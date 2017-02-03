@@ -963,6 +963,7 @@ function _sendEvent(client, room, event, callback) {
 
         try {
             _updatePendingEventStatus(room, event, EventStatus.NOT_SENT);
+            event.error = err;
 
             if (callback) {
                 callback(err);
