@@ -331,6 +331,7 @@ utils.extend(module.exports.MatrixEvent.prototype, {
      * attempt is completed.
      */
     attemptDecryption: async function(crypto) {
+        console.log(`attemptDecrption ${this.getId()}`);
         // start with a couple of sanity checks.
         if (!this.isEncrypted()) {
             throw new Error("Attempt to decrypt event which isn't encrypted");
@@ -365,11 +366,15 @@ utils.extend(module.exports.MatrixEvent.prototype, {
     },
 
     _decryptionLoop: async function(crypto) {
+        console.log(`_decryptionLoop ${this.getId()}`);
+
         // make sure that this method never runs completely synchronously.
         // (doing so would mean that we would clear _decryptionPromise *before*
         // it is set in attemptDecryption - and hence end up with a stuck
         // `_decryptionPromise`).
         await Promise.resolve();
+
+        console.log(`_decryptionLoop.2 ${this.getId()}`);
 
         while (true) {
             this._retryDecryption = false;
@@ -379,7 +384,9 @@ utils.extend(module.exports.MatrixEvent.prototype, {
                 if (!crypto) {
                     res = this._badEncryptedMessage("Encryption not enabled");
                 } else {
+                    console.log(`_decryptionLoop.3 ${this.getId()}`);
                     res = await crypto.decryptEvent(this);
+                    console.log(`_decryptionLoop.4 ${this.getId()}`);
                 }
             } catch (e) {
                 if (e.name !== "DecryptionError") {

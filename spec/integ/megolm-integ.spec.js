@@ -350,7 +350,7 @@ describe("megolm", function() {
         });
     });
 
-    it("Alice receives a megolm message before the session keys", function() {
+    it.only("Alice receives a megolm message before the session keys", function() {
         // https://github.com/vector-im/riot-web/issues/2273
         let roomKeyEncrypted;
 
