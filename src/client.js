@@ -2638,6 +2638,7 @@ MatrixClient.prototype.setRoomMutePushRule = function(scope, roomId, mute) {
  * @param {string} opts.query The text to query.
  * @param {string=} opts.keys The keys to search on. Defaults to all keys. One
  * of "content.body", "content.name", "content.topic".
+ * @param {string} opts.custom_search_url the URL to the search daemon if not HS
  * @param {module:client.callback} callback Optional.
  * @return {module:client.Promise} Resolves: TODO
  * @return {module:http-api.MatrixError} Rejects: with an error response.
@@ -2657,6 +2658,7 @@ MatrixClient.prototype.searchMessageText = function(opts, callback) {
                 room_events: roomEvents,
             },
         },
+        custom_search_url: opts.custom_search_url,
     }, callback);
 };
 
@@ -2677,6 +2679,7 @@ MatrixClient.prototype.searchMessageText = function(opts, callback) {
  * @param {Object} opts
  * @param {string} opts.term     the term to search for
  * @param {Object} opts.filter   a JSON filter object to pass in the request
+ * @param {string} opts.custom_search_url the URL to the search daemon if not HS
  * @return {module:client.Promise} Resolves: result object
  * @return {module:http-api.MatrixError} Rejects: with an error response.
  */
@@ -2704,7 +2707,10 @@ MatrixClient.prototype.searchRoomEvents = function(opts) {
         highlights: [],
     };
 
-    return this.search({body: body}).then(
+    return this.search({
+        body: body,
+        custom_search_url: opts.custom_search_url,
+    }).then(
         this._processRoomEventsSearch.bind(this, searchResults),
     );
 };

@@ -1418,6 +1418,7 @@ MatrixBaseApis.prototype.setPushRuleActions = function(scope, kind,
 /**
  * Perform a server-side search.
  * @param {Object} opts
+ * @param {string} opts.custom_search_url the URL to the search daemon if not HS
  * @param {string} opts.next_batch the batch token to pass in the query string
  * @param {Object} opts.body the JSON object to pass to the request body.
  * @param {module:client.callback} callback Optional.
@@ -1428,6 +1429,12 @@ MatrixBaseApis.prototype.search = function(opts, callback) {
     const queryparams = {};
     if (opts.next_batch) {
         queryparams.next_batch = opts.next_batch;
+    }
+
+    if (opts.custom_search_url) {
+        return this._http.requestOtherUrl(
+            callback, "POST", opts.custom_search_url + '/search', queryparams, opts.body,
+        );
     }
     return this._http.authedRequest(
         callback, "POST", "/search", queryparams, opts.body,
