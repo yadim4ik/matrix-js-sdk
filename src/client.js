@@ -2759,7 +2759,8 @@ MatrixClient.prototype.backPaginateRoomEventsSearch = function(searchResults) {
  * @return {Object} searchResults
  * @private
  */
-MatrixClient.prototype._processRoomEventsSearch = function(searchResults, response) {
+MatrixClient.prototype._processRoomEventsSearch = async function(searchResults,
+                                                                 response) {
     const room_events = response.search_categories.room_events;
 
     searchResults.count = room_events.count;
@@ -2782,6 +2783,11 @@ MatrixClient.prototype._processRoomEventsSearch = function(searchResults, respon
     for (let i = 0; i < room_events.results.length; i++) {
         const sr = SearchResult.fromJson(room_events.results[i], this.getEventMapper());
         searchResults.results.push(sr);
+    }
+    // two loops to increase concurrency, first loop starts promises, second waits on them
+    for (const sr of searchResults.results) {
+        const encryptedEvs = sr.context.getTimeline().filter((ev) => ev.isEncrypted());
+        await Promise.all(encryptedEvs.map((ev) => ev._decryptionPromise));
     }
     return searchResults;
 };
