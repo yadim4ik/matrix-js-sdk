@@ -229,10 +229,11 @@ function calculateDisplayName(member, event, roomState) {
         return displayName;
     }
 
-    // First check if the displayname is something we consider truthy
-    // after stripping it of zero width characters and padding spaces
-    const strippedDisplayName = utils.removeHiddenChars(displayName);
-    if (!strippedDisplayName) {
+    // First check if there are any entries of this displayname in the cache
+    // if there are 0 then our displayname must be falsey after hidden character removal
+    // so return the member's ID instead.
+    const userIds = roomState.getUserIdsWithDisplayName(displayName);
+    if (userIds.length === 0) {
         return selfUserId;
     }
 
@@ -240,11 +241,8 @@ function calculateDisplayName(member, event, roomState) {
     // If it does, it may be someone trying to impersonate someone else
     // Show full mxid in this case
     // Also show mxid if there are other people with the same displayname
-    // ignoring any zero width chars (unicode 200B-200D)
-    // if their displayname is made up of just zero width chars, show full mxid
     let disambiguate = /@.+:.+/.test(displayName);
     if (!disambiguate) {
-        const userIds = roomState.getUserIdsWithDisplayName(strippedDisplayName);
         disambiguate = userIds.some((u) => u !== selfUserId);
     }
 
