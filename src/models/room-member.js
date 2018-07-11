@@ -225,14 +225,14 @@ function calculateDisplayName(member, event, roomState) {
         return selfUserId;
     }
 
-    if (!roomState) {
-        return displayName;
-    }
-
     // First check if the user's displayName is falsey after
     // hidden character removal, return their MXID if it is
     if (!utils.removeHiddenChars(displayName)) {
         return selfUserId;
+    }
+
+    if (!roomState) {
+        return displayName;
     }
 
     // Next check if the name contains something that look like a mxid
