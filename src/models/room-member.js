@@ -229,20 +229,20 @@ function calculateDisplayName(member, event, roomState) {
         return displayName;
     }
 
-    // First check if there are any entries of this displayname in the cache
-    // if there are 0 then our displayname must be falsey after hidden character removal
-    // so return the member's ID instead.
-    const userIds = roomState.getUserIdsWithDisplayName(displayName);
-    if (userIds.length === 0) {
+    // First check if the user's displayName is falsey after
+    // hidden character removal, return their MXID if it is
+    if (!utils.removeHiddenChars(displayName)) {
         return selfUserId;
     }
 
     // Next check if the name contains something that look like a mxid
     // If it does, it may be someone trying to impersonate someone else
     // Show full mxid in this case
-    // Also show mxid if there are other people with the same displayname
+    // Also show mxid if there are other people with the same or similar
+    // displayname, after hidden character removal.
     let disambiguate = /@.+:.+/.test(displayName);
     if (!disambiguate) {
+        const userIds = roomState.getUserIdsWithDisplayName(displayName);
         disambiguate = userIds.some((u) => u !== selfUserId);
     }
 
