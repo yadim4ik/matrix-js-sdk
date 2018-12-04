@@ -1,6 +1,8 @@
 /.jsdocbuild
 /.jsdoc
+/.idea
 
+package-lock.json
 node_modules
 .lock-wscript
 build/Release
