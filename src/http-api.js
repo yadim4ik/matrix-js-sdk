@@ -391,6 +391,39 @@ module.exports.MatrixHttpApi.prototype = {
     },
 
     /**
+     * Generate a WebSocket that can be extended with callback on the calling site
+     * @param {Object} queryParams Params to Setup WebSocket-Connection; can be empty
+     * @param {string} queryParams.access_token Access-Token to overwrite
+     *     the token which can be accessed via this.opts
+     * @param {string} queryParams.filter Filter definition for the sync-messages
+     * @param {string} queryParams.since Timestamp to do a differential
+     * @returns {WebSocket} set up with values of queryParams of with default-values accessible by this
+     */
+    generateWebSocket: function(queryParams) {
+        if (!queryParams) {
+            queryParams = {};
+        }
+        // currently is is not possible to set the accessToken as Authorization Header
+        if (!queryParams.access_token) {
+            queryParams.access_token = this.opts.accessToken;
+        }
+        //TODO find a better way to distinguish between http and https
+        let _base = "ws://" + this.opts.baseUrl.substr("http://".length);
+        if (this.opts.baseUrl.startsWith("https://")) {
+            _base = "wss://" + this.opts.baseUrl.substr("https://".length);
+        }
+        const _params = {
+            filter: queryParams.filter,
+            since: queryParams.since,
+            access_token: queryParams.access_token,
+        };
+        //TODO make query-path configuration somewhere else
+        return new WebSocket(_base + "/_matrix/client/ws/r0?"
+            + utils.encodeParams(_params), "m.json");
+    },
+
+
+    /**
      * Perform an authorised request to the homeserver.
      * @param {Function} callback Optional. The callback to invoke on
      * success/failure. See the promise return values for more information.

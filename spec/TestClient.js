@@ -62,6 +62,7 @@ export default function TestClient(
         sessionStore: sessionStore,
         cryptoStore: this.cryptoStore,
         request: this.httpBackend.requestFn,
+        useWebSockets: false,
     });
 
     this.deviceKeys = null;

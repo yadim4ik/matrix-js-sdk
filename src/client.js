@@ -38,6 +38,7 @@ const utils = require("./utils");
 const contentRepo = require("./content-repo");
 const Filter = require("./filter");
 const SyncApi = require("./sync");
+const WebSocketApi = require("./websocket");
 const MatrixBaseApis = require("./base-apis");
 const MatrixError = httpApi.MatrixError;
 const ContentHelpers = require("./content-helpers");
@@ -103,6 +104,10 @@ const CRYPTO_ENABLED = isCryptoAvailable();
  * @param {Number=} opts.localTimeoutMs Optional. The default maximum amount of
  * time to wait before timing out HTTP requests. If not specified, there is no timeout.
  *
+ * @param {boolean} opts.useWebSockets Optional. Set to false to prefer SyncAPI (long
+ * polling) to WebSocketAPI. If not set WebSocketApi will be prefered.
+ * Note: There is a fallback to SyncAPI if WebSocketAPI does not work
+ *
  * @param {boolean} [opts.useAuthorizationHeader = false] Set to true to use
  * Authorization header instead of query param to send the access token to the server.
  *
@@ -142,6 +147,7 @@ function MatrixClient(opts) {
         userId: userId,
     };
 
+    // will be set to use WebSockets by WebSocketApi if needed
     this.scheduler = opts.scheduler;
     if (this.scheduler) {
         const self = this;
@@ -170,6 +176,8 @@ function MatrixClient(opts) {
     }
     this._syncingRetry = null;
     this._syncApi = null;
+    this._websocketApi = null;
+    this.useWebSockets = Boolean(opts.useWebSockets);
     this._peekSync = null;
     this._isGuest = false;
     this._ongoingScrollbacks = {};
@@ -282,6 +290,10 @@ MatrixClient.prototype.setForceTURN = function(forceTURN) {
  * @see module:client~MatrixClient#event:"sync"
  */
 MatrixClient.prototype.getSyncState = function() {
+    if (this.useWebSockets && this._websocketApi) {
+        return this._websocketApi.getSyncState();
+    }
+
     if (!this._syncApi) {
         return null;
     }
@@ -347,6 +359,9 @@ MatrixClient.prototype.retryImmediately = function() {
  * @return {EventTimelineSet} the globl notification EventTimelineSet
  */
 MatrixClient.prototype.getNotifTimelineSet = function() {
+    if (this._websocketApi) {
+        return this._websocketApi.reconnectNow();
+    }
     return this._notifTimelineSet;
 };
 
@@ -1232,7 +1247,12 @@ function _sendEvent(client, room, event, callback) {
             }
         }
 
+        /* TODO: debug promise */
         if (!promise) {
+            if (client.useWebSockets && client._websocketApi) {
+                promise = client._websocketApi.sendEvent(event);
+            }
+
             promise = _sendEventHttpRequest(client, event);
         }
         return promise;
@@ -1528,6 +1548,7 @@ MatrixClient.prototype.sendReceipt = function(event, receiptType, callback) {
  * @param {module:client.callback} callback Optional.
  * @return {module:client.Promise} Resolves: TODO
  * @return {module:http-api.MatrixError} Rejects: with an error response.
+ * TODO: Propose/Implement usage of WebSocketApi
  */
 MatrixClient.prototype.sendReadReceipt = function(event, callback) {
     return this.sendReceipt(event, "m.read", callback);
@@ -1556,6 +1577,10 @@ MatrixClient.prototype.setRoomReadMarkers = function(roomId, eventId, rrEvent) {
         if (room) {
             room._addLocalEchoReceipt(this.credentials.userId, rrEvent, "m.read");
         }
+    }
+
+    if (this.useWebSockets && this._websocketApi) {
+        return this._websocketApi.sendReadMarkers(roomId, rmEventId, rrEventId);
     }
 
     return this.setRoomReadMarkersHttpRequest(roomId, rmEventId, rrEventId);
@@ -1609,6 +1634,10 @@ MatrixClient.prototype.sendTyping = function(roomId, isTyping, timeoutMs, callba
         return Promise.resolve({}); // guests cannot send typing notifications so don't bother.
     }
 
+    if (this.useWebSockets && this._websocketApi) {
+        return this._websocketApi.sendTyping(roomId, isTyping, timeoutMs, callback);
+    }
+
     const path = utils.encodeUri("/rooms/$roomId/typing/$userId", {
         $roomId: roomId,
         $userId: this.credentials.userId,
@@ -1619,6 +1648,7 @@ MatrixClient.prototype.sendTyping = function(roomId, isTyping, timeoutMs, callba
     if (isTyping) {
         data.timeout = timeoutMs ? timeoutMs : 20000;
     }
+
     return this._http.authedRequest(
         callback, "PUT", path, undefined, data,
     );
@@ -1919,9 +1949,14 @@ MatrixClient.prototype.setPresence = function(opts, callback) {
     }
 
     const validStates = ["offline", "online", "unavailable"];
-    if (validStates.indexOf(opts.presence) == -1) {
+    if (validStates.indexOf(opts.presence) === -1) {
         throw new Error("Bad presence value: " + opts.presence);
     }
+
+    if (this.useWebSockets && this._websocketApi) {
+        return this._websocketApi.sendPresence(opts);
+    }
+
     return this._http.authedRequest(
         callback, "PUT", path, undefined, opts,
     );
@@ -2345,6 +2380,7 @@ MatrixClient.prototype.resetNotifTimelineSet = function() {
  * @param {String} roomId The room to attempt to peek into.
  * @return {module:client.Promise} Resolves: Room object
  * @return {module:http-api.MatrixError} Rejects: with an error response.
+ * TODO: Propose/Implement usage of WebSocketApi (maybe separate for requesting /events)
  */
 MatrixClient.prototype.peekInRoom = function(roomId) {
     if (this._peekSync) {
@@ -2618,6 +2654,7 @@ MatrixClient.prototype.getRoomPushRule = function(scope, roomId) {
         }
     } else {
         throw new Error(
+            // TODO or WebSocket has to be initialized
             "SyncApi.sync() must be done before accessing to push rules.",
         );
     }
@@ -3119,6 +3156,11 @@ MatrixClient.prototype.startClient = async function(opts) {
         console.error("Still have sync object whilst not running: stopping old one");
         this._syncApi.stop();
     }
+    if (this._websocketApi) {
+        console.error("Still have websocket object whilst not running: stopping old one");
+        this._websocketApi.stop();
+        this._websocketApi = null;
+    }
 
     // shallow-copy the opts dict before modifying and storing it
     opts = Object.assign({}, opts);
@@ -3131,8 +3173,24 @@ MatrixClient.prototype.startClient = async function(opts) {
         return this._canResetTimelineCallback(roomId);
     };
     this._clientOpts = opts;
+
     this._syncApi = new SyncApi(this, opts);
-    this._syncApi.sync();
+
+    if (this.useWebSockets) {
+        this._websocketApi = new WebSocketApi(this, opts);
+        this._websocketApi.start();
+        const self = this;
+        this.scheduler.setProcessFunction(function(eventToSend) {
+            const room = self.getRoom(eventToSend.getRoomId());
+            if (eventToSend.status !== EventStatus.SENDING) {
+                _updatePendingEventStatus(room, eventToSend,
+                    EventStatus.SENDING);
+            }
+            return self._websocketApi.sendEvent(eventToSend);
+        });
+    } else {
+        this._syncApi.sync();
+    }
 };
 
 /**
@@ -3167,6 +3225,10 @@ MatrixClient.prototype.stopClient = function() {
         this._syncApi.stop();
         this._syncApi = null;
     }
+    if (this._websocketApi) {
+        this._websocketApi.stop();
+        this._websocketApi = null;
+    }
     if (this._crypto) {
         this._crypto.stop();
     }
@@ -3174,6 +3236,39 @@ MatrixClient.prototype.stopClient = function() {
         this._peekSync.stopPeeking();
     }
     global.clearTimeout(this._checkTurnServersTimeoutID);
+};
+
+/**
+ * Called by WebSocketApi to fallback to Longpolling (SyncAPI)
+ * @param {Object} opts The same Object as defined for SyncApi or WebSocketApi (to init)
+ * @param {Object} syncOptions Parameter to start syncApi._sync() with to
+ *     not beeing forced to run initialization of the client again
+ * TODO: Find a not so hacky way to implement this
+ */
+MatrixClient.prototype.connectionFallback = function(opts, syncOptions) {
+    this.useWebSockets = false;
+    console.log("Do Fallback to SyncAPI");
+    if (! this._syncApi) {
+        this._syncApi = new SyncApi(this, opts);
+    }
+    const sync = this._syncApi;
+    sync._running = true;
+    if (global.document) {
+        sync._onOnlineBound = sync._onOnline.bind(sync);
+        global.document.addEventListener("online", sync._onOnlineBound, false);
+    }
+    sync._sync(syncOptions);
+    this._websocketApi.stop();
+    this._websocketApi = null;
+    const self = this;
+    this.scheduler.setProcessFunction(function(eventToSend) {
+        const room = self.getRoom(eventToSend.getRoomId());
+        if (eventToSend.status !== EventStatus.SENDING) {
+            _updatePendingEventStatus(room, eventToSend,
+                EventStatus.SENDING);
+        }
+        return _sendEventHttpRequest(self, eventToSend);
+    });
 };
 
 /*
